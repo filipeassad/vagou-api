@@ -1,0 +1,14 @@
+{
+  "dialect": "postgres",
+  "outFile": "src/plugins/external/db-types.ts",
+  "excludePattern": "kysely_*",
+  "overrides": {
+    "columns": {
+      "memberships.role": "\"resident\" | \"manager\" | \"front_desk\"",
+      "memberships.unit_relation": "\"owner\" | \"tenant\" | null",
+      "memberships.status": "\"pending\" | \"approved\" | \"rejected\" | \"removed\"",
+      "memberships.origin": "\"qr_code\" | \"invite\" | \"admin\" | \"manager\"",
+      "invites.unit_relation": "\"owner\" | \"tenant\""
+    }
+  }
+}

@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vagou_db
+    environment:
+      POSTGRES_USER: vagou
+      POSTGRES_PASSWORD: vagou
+      POSTGRES_DB: vagou
+    ports:
+      # Porta 5433 no computador para não conflitar com outros Postgres locais na 5432.
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vagou -d vagou']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
