@@ -18,7 +18,7 @@ export type MembershipSummary = {
   can_list_spots: boolean;
   unit_relation: Membership['unit_relation'];
   rejection_reason: string | null;
-  condominium: { id: string; name: string; timezone: string };
+  condominium: { id: string; name: string; timezone: string; public_code: string };
   unit: { id: string; number: string; block: { id: string; name: string } } | null;
 };
 
@@ -68,6 +68,7 @@ export function createMembershipsRepository(db: Db) {
           'c.id as condominium_id',
           'c.name as condominium_name',
           'c.timezone',
+          'c.public_code',
           'u.id as unit_id',
           'u.number as unit_number',
           'b.id as block_id',
@@ -85,7 +86,12 @@ export function createMembershipsRepository(db: Db) {
         can_list_spots: row.can_list_spots,
         unit_relation: row.unit_relation,
         rejection_reason: row.rejection_reason,
-        condominium: { id: row.condominium_id, name: row.condominium_name, timezone: row.timezone },
+        condominium: {
+          id: row.condominium_id,
+          name: row.condominium_name,
+          timezone: row.timezone,
+          public_code: row.public_code,
+        },
         unit:
           row.unit_id && row.unit_number && row.block_id && row.block_name
             ? {

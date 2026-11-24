@@ -97,7 +97,8 @@ Regras:
   de `routes/v1/condominiums/` exige login e vínculo com o `:cid` em todas elas; sem
   vínculo → 404. Cada rota declara quem pode em `config: { access: ACCESS.manager }`
   (`ACCESS` em `src/plugins/app/authorization.ts`); sem declarar, vale morador ou
-  síndico aprovado. Use `request.membership` (vínculo) e `request.auth` (usuário).
+  síndico aprovado. Uma lista de regras vale se qualquer uma servir (ex.: a rota
+  `memberships/me`). Use `request.membership` (vínculo) e `request.auth` (usuário).
   Rotas fora de condomínio que exigem login usam `onRequest: fastify.authenticate`.
   Rotas em `src/routes/v1/admin/` exigem `is_admin` (autohooks da pasta)
 - Datas nas respostas usam `DateTime` (`src/schemas/common.ts`): `Date` no código, ISO 8601

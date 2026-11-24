@@ -27,7 +27,7 @@ export function createReviewsService(fastify: FastifyInstance) {
     });
   }
 
-  return {
+  const service = {
     list: reviewsRepository.list,
     setCanListSpots: reviewsRepository.setCanListSpots,
     /** Remoção (req. 24, 25). Sem aviso ao morador: a spec não pede (ver plano, seção 10). */
@@ -67,6 +67,23 @@ export function createReviewsService(fastify: FastifyInstance) {
       );
     },
 
+    /**
+     * `PATCH .../memberships/me`: o síndico informa a própria unidade (T23); o morador
+     * pendente ou recusado corrige e reenvia.
+     */
+    async updateOwn(
+      condominiumId: string,
+      membership: { id: string; role: string },
+      userId: string,
+      patch: { unitId?: string; unitRelation?: Relation },
+    ) {
+      if (membership.role === 'manager') {
+        await reviewsRepository.setManagerUnit(condominiumId, membership.id, patch);
+        return;
+      }
+      await service.resubmit(condominiumId, membership.id, userId, patch);
+    },
+
     /** O morador reenvia o próprio cadastro: volta a pendente e o síndico é avisado de novo. */
     async resubmit(
       condominiumId: string,
@@ -84,6 +101,7 @@ export function createReviewsService(fastify: FastifyInstance) {
       }
     },
   };
+  return service;
 }
 
 export type ReviewsService = ReturnType<typeof createReviewsService>;

@@ -215,7 +215,37 @@
       e o caminho do cookie do refresh. Teste `test/routes/v1/openapi.test.ts` passou a
       conferir a lista de rotas.
 
-- [ ] **T22. Validação dos critérios de aceite da spec 001 (lado API)**
+- [x] **T22. Validação dos critérios de aceite da spec 001 (lado API)**
       Teste de ponta a ponta por cenário da spec (via `app.inject`).
       _Verificação:_ todos os cenários da spec passam; atualizar a coluna **API** da
       tabela em `vagou-specs/specs/README.md` para "Implementada".
+      _Feito em 2026-11-23:_ `test/acceptance/spec-001.test.ts`, 11 testes para os 10 cenários,
+      só pelas rotas (senha definida pelo link do e-mail, login, tokens tirados dos links).
+      Banco só para o tempo passar e para criar o admin. Ressalvas: na remoção, "a vaga some
+      da busca" e "a reserva é cancelada com estorno" ficam com os planos 002 e 006 (a API
+      emite `membership.removed`, conferido no teste); na troca de síndico, "Maria continua
+      moradora" só vale para síndico com unidade (pergunta 10 da seção 9 do plano). Teste
+      de mutação ok (filtro de condomínio; convite vencido × usado).
+
+## Ajustes da revisão (2026-11-23)
+
+- [x] **T23. Síndico informa a própria unidade** (req. 5; seção 9, item 10, opção (b))
+      `PATCH /v1/condominiums/:cid/memberships/me` aceita o síndico aprovado: grava
+      `unit_id`/`unit_relation` sem mudar o status nem avisar ninguém. Unidade de outro
+      condomínio → 404 `UNIT_NOT_FOUND`.
+      _Verificação:_ teste: síndico informa a unidade, passa o papel e continua morador
+      aprovado dela; o cenário "troca de síndico" da T22 passa também com o síndico
+      cadastrado pelo admin.
+      _Feito em 2026-11-23:_ `PATCH .../memberships/me` vale para o síndico aprovado (sem
+      unidade, exige `unit_id` e `unit_relation`: 400 `MANAGER_UNIT_REQUIRED`). Inquilino com
+      a regra desligada perde a permissão de anunciar. `config.access` aceita uma lista de
+      regras. Cenário de aceite novo com a síndica cadastrada pelo admin. Teste de mutação
+      ok (condomínio da unidade; regra de inquilinos).
+
+- [x] **T24. `public_code` em `GET /v1/me`** (req. 6, 18; seção 9, item 11)
+      `memberships[].condominium.public_code`; exportar o `openapi.json`.
+      _Verificação:_ teste: o código vem em cada vínculo; `openapi.test.ts` passa com o
+      contrato exportado de novo.
+      _Feito em 2026-11-23:_ `memberships[].condominium.public_code` em todos os vínculos
+      (inclusive portaria). O teste de correção do cadastro agora acha a unidade pela rota
+      pública com o código de `/v1/me`, como o web vai fazer. Teste de mutação ok.

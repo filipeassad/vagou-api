@@ -254,9 +254,9 @@ Mudanças propostas para revisão do time `vagou-web`. Respostas de erro no form
 
 ### Morador
 
-| Método e rota                                | Uso                                                                             | Req. |
-| -------------------------------------------- | ------------------------------------------------------------------------------- | ---- |
-| `PATCH /v1/condominiums/:cid/memberships/me` | Corrigir unidade/vínculo de um cadastro pendente ou recusado (volta a pendente) | 18   |
+| Método e rota                                | Uso                                                                                  | Req. |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ | ---- |
+| `PATCH /v1/condominiums/:cid/memberships/me` | Morador pendente/recusado corrige e reenvia; síndico informa a própria unidade (T23) | 18   |
 
 Observação: o token do convite só aparece no link entregue ao síndico; a API nunca o
 devolve de novo (guarda só o hash).
@@ -333,26 +333,70 @@ a partir dele. Pontos para o time do web conferir e responder aqui:
    `Path=/v1/auth`, mas o navegador chama `/api/v1/auth/refresh`: o cookie não é enviado e
    o refresh falha. Proposta: o proxy encaminhar `/v1` sem reescrever (o navegador usa o
    mesmo caminho que a API). Na hospedagem, servir a API no mesmo caminho `/v1`.
+   **Resposta do web (2026-11-23):** de acordo. O proxy passa a encaminhar `/v1` sem
+   reescrever (T1 do web); o `/api` sai do `vite.config.ts` e do `CLAUDE.md` do web.
 5. **Páginas do web que a API põe nos links** (e-mails e respostas). O web precisa ter:
    `/entrar`, `/convite#token=...`, `/redefinir-senha#token=...`,
    `/definir-senha#token=...` e `/condominios/:cid/moradores`. O token vem no
    **fragmento** (`#token=`): a tela lê o fragmento e manda o token no corpo de
    `/v1/public/invites/lookup`, `/v1/public/invites/accept`, `/v1/me/invites/accept` e
    `/v1/auth/reset-password`. Os nomes servem?
+   **Resposta do web (2026-11-23):** de acordo com os cinco caminhos e com o token no
+   fragmento. O web lê o fragmento e o apaga da barra de endereço antes de chamar a API.
+   O link do QR Code é `/c/<public_code>` (definido pelo web; a API não monta esse link).
 6. **Login do web:** o web não manda `refresh_token` no corpo; recebe o refresh no cookie
    (`HttpOnly`, `SameSite=Strict`) e o access token (15 min) no corpo. Refresh e logout
    são chamados **sem corpo**. Quando o access token vence, a API responde 401 e o web
    chama `/v1/auth/refresh` uma vez antes de mandar para o login.
+   **Resposta do web (2026-11-23):** de acordo. Acrescentamos um cuidado do lado do web:
+   como reusar um refresh encerra todas as sessões, o web faz um refresh por vez,
+   inclusive entre abas (Web Locks API). O access token fica só em memória.
 7. **Erros:** sempre `{ error: { code, message } }`. A `message` já está em português e
    pode ser mostrada ao usuário; o web decide pela `code` quando precisa de tela própria
    (ex.: `INVITE_EXPIRED`, `ALREADY_MEMBER`, `CANNOT_REMOVE_MANAGER`). 502/503 com
    código do Vagou (ex.: `INVITE_SEND_FAILED`) também trazem mensagem para o usuário.
+   **Resposta do web (2026-11-23):** de acordo. A lista de códigos com tela própria está na
+   seção 5 do plano do web. Pedido: manter estáveis os `code` já publicados; mudar o
+   texto da `message` é livre.
 8. **Fluxo pós-cadastro:** `GET /v1/me` traz os vínculos com `status`. O web decide a tela
    pelo vínculo (pendente → espera; recusado → motivo + corrigir com
    `PATCH .../memberships/me`; aprovado → app). Falta alguma informação para essas telas?
+   **Resposta do web (2026-11-23):** falta uma informação (item 11): o `public_code` do
+   condomínio em cada vínculo de `/v1/me`. O resto é suficiente.
 9. **Campos de cadastro:** telefone aceita dígitos, espaço, `+`, `-` e parênteses (8 a 20
    caracteres) e a API guarda só os dígitos; senha de 8 a 128 caracteres. O web valida
    igual para dar retorno rápido, mas a API é quem decide.
+   **Resposta do web (2026-11-23):** de acordo; o web repete `pattern`, `minlength` e
+   `maxlength` nos campos, só para retorno rápido.
+
+10. **Síndico sem unidade ao passar o papel (achado na T22).** Respondida: opção (b)
+    (seção 10, T23). A spec diz que, na troca,
+    "Maria continua como moradora". Isso só acontece se o síndico tiver unidade. O síndico
+    cadastrado pelo admin (T12) entra sem unidade, e hoje não tem como ganhar uma: o
+    cadastro pelo QR Code responde `ALREADY_MEMBER` e o `PATCH .../memberships/me` é só
+    para morador pendente/recusado. Ao passar o papel, ele sai do condomínio (`removed`)
+    e precisa se cadastrar de novo e esperar aprovação. Opções:
+    (a) aceitar como está e ajustar o texto da spec;
+    (b) o síndico informa a própria unidade (`PATCH .../memberships/me` aceitando o
+    síndico, sem mudar o status), e ao passar o papel vira morador aprovado dela;
+    (c) o admin informa a unidade do síndico.
+    Recomendação: (b), mudança pequena e sem rota nova.
+
+11. **Pedido do web: `public_code` em `GET /v1/me`** Respondida: aprovado (seção 10,
+    T24). (plano 001 do web, seção 6).
+    Incluir `public_code` no `condominium` de cada vínculo. Usos: (a) o síndico monta o
+    link e o cartaz do QR Code (req. 6), que hoje só o admin recebe; (b) o morador
+    recusado lista as unidades pela rota pública para corrigir o cadastro (req. 18), já
+    que `GET .../blocks` é só do síndico. O código não é segredo (fica impresso no
+    elevador). Campo novo, compatível. Precisa de uma tarefa na API.
+
+12. **Achado do web (T10, 2026-11-23): falha no envio do convite deixa o síndico sem link.**
+    Em `POST .../invites/:id/send`, o token é trocado **antes** do envio. Se o fornecedor de
+    e-mail falha (502 `INVITE_SEND_FAILED`), o link que o síndico tinha já parou de valer e o
+    novo não volta na resposta (o erro só tem `code` e `message`). A mensagem pede
+    "compartilhe o link você mesmo", mas ele não tem link. Proposta: gravar o hash novo só
+    depois do envio dar certo (se falhar, o link antigo continua valendo). Hoje o web orienta
+    a cancelar o convite e gerar outro. Em aberto.
 
 ## 10. Decisões da revisão
 
@@ -482,7 +526,7 @@ a partir dele. Pontos para o time do web conferir e responder aqui:
     login), que cria o vínculo pendente com a conta atual. Já tem vínculo no condomínio
     (pendente, aprovado ou recusado) → 409 `ALREADY_MEMBER`; recusado reenvia pela T17.
   - O síndico recebe `membership_pending` com o link `WEB_ORIGIN/condominios/:cid/moradores`
-    (caminho do web a confirmar). Sem síndico aprovado, ninguém é avisado.
+    (caminho confirmado pelo web). Sem síndico aprovado, ninguém é avisado.
 - **Aprovação e permissões (T17):**
   - `GET /v1/condominiums/:cid/memberships?status=pending|approved|rejected` → `{ items }`,
     do mais novo ao mais antigo. Cada item: `id`, `role`, `status`, `unit_relation`,
@@ -560,5 +604,21 @@ a partir dele. Pontos para o time do web conferir e responder aqui:
     mesmo tempo não passam os dois.
   - Sem aviso ao morador removido: a spec não pede. Fácil de incluir se o produto quiser.
   - Bloco/unidade de outro condomínio → 404 `BLOCK_NOT_FOUND` / `UNIT_NOT_FOUND`.
-- **Regra de senha nova (proposta, a confirmar):** 8 a 128 caracteres, sem exigir
-  símbolo/maiúscula (NIST SP 800-63B). Já aplicada no reset (T10); entra também na T16.
+- **Critérios de aceite (T22):** `test/acceptance/spec-001.test.ts`, um `describe` por
+  cenário da spec, só pelas rotas. Partes que dependem de outras features (vaga some da
+  busca, reserva cancelada com estorno) são conferidas até o evento `membership.removed`.
+- **Regra de senha nova (confirmada em 2026-11-23):** 8 a 128 caracteres, sem exigir
+  símbolo/maiúscula (NIST SP 800-63B). Vale em todo lugar onde se cria ou troca senha
+  (cadastro, convite, redefinição, definir senha, portaria).
+- **Síndico informa a própria unidade (item 10 da seção 9, opção (b), 2026-11-23):**
+  `PATCH .../memberships/me { unit_id, unit_relation }` passa a aceitar o síndico
+  aprovado: grava a unidade **sem mudar o status** (continua síndico aprovado). Ao passar
+  o papel, ele vira morador aprovado dessa unidade, como a spec pede (req. 5). Sem
+  unidade, o comportamento atual continua (vínculo vira `removed`). Tarefa T23.
+  Síndico sem unidade precisa enviar as duas coisas (400 `MANAGER_UNIT_REQUIRED`); se
+  for inquilino e a regra do condomínio estiver desligada, perde a permissão de anunciar.
+  Para a rota aceitar morador pendente/recusado **e** síndico aprovado, `config.access`
+  passou a aceitar uma lista de regras (vale se qualquer uma servir).
+- **`public_code` em `GET /v1/me` (item 11 da seção 9, pedido do web, 2026-11-23):**
+  `memberships[].condominium.public_code`, para todos os vínculos. Campo novo, compatível.
+  Tarefa T24 (feita: o web pode gerar os tipos de novo com `npm run api:types`).

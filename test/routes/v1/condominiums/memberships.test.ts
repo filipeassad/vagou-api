@@ -179,7 +179,16 @@ describe('aprovação de moradores', () => {
       rejection_reason: 'Unidade errada: você mora no 202',
     });
 
-    const resent = await call('PATCH', '/me', { unit_id: unit202.id }, joaoHeaders);
+    // O web lista as unidades pela rota pública, com o código que vem em /v1/me (T24).
+    const code = me.json().memberships[0].condominium.public_code as string;
+    const page = await app.inject({ url: `/v1/public/condominiums/${code}` });
+    const units = (page.json().blocks as { units: { id: string; number: string }[] }[]).flatMap(
+      (b) => b.units,
+    );
+    const chosen = units.find((u) => u.number === '202')!;
+    expect(chosen.id).toBe(unit202.id);
+
+    const resent = await call('PATCH', '/me', { unit_id: chosen.id }, joaoHeaders);
     expect(resent.statusCode).toBe(204);
     expect(await membership(joao.membershipId)).toMatchObject({
       status: 'pending',

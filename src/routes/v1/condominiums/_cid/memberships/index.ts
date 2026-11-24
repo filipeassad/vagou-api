@@ -41,26 +41,32 @@ const membershipRoutes: FastifyPluginAsyncTypebox = async (fastify) => {
     }),
   );
 
-  // Rota estática: tem precedência sobre /:id. Só o próprio morador, pendente ou recusado.
+  // Rota estática: tem precedência sobre /:id. O próprio vínculo: morador pendente ou
+  // recusado (corrige e reenvia) ou síndico (informa a própria unidade, T23).
   fastify.patch(
     '/me',
     {
       schema: {
         tags: ['memberships'],
-        summary: 'Corrigir e reenviar o próprio cadastro (morador)',
+        summary: 'Corrigir o próprio cadastro (morador) ou informar a própria unidade (síndico)',
         description:
-          'Recusado ou pendente volta a pendente, sem o motivo da recusa; o síndico é avisado de novo.',
+          'Morador recusado ou pendente: volta a pendente, sem o motivo da recusa, e o síndico é avisado de novo. Síndico: grava a unidade sem mudar a situação; ao passar o papel, vira morador aprovado dela. Síndico sem unidade precisa enviar unit_id e unit_relation (400 MANAGER_UNIT_REQUIRED). Morador aprovado → 403.',
         security,
         params: CondominiumParams,
         body: ResubmitBody,
         response: { ...done, 400: ErrorRef, 409: ErrorRef, ...errors },
       },
-      config: { access: { roles: ['resident'], statuses: ['pending', 'rejected'] } },
+      config: {
+        access: [
+          { roles: ['resident'], statuses: ['pending', 'rejected'] },
+          { roles: ['manager'] },
+        ],
+      },
     },
     async (request, reply) => {
-      await fastify.reviewsService.resubmit(
+      await fastify.reviewsService.updateOwn(
         request.params.cid,
-        request.membership!.id,
+        request.membership!,
         request.auth!.userId,
         { unitId: request.body.unit_id, unitRelation: request.body.unit_relation },
       );

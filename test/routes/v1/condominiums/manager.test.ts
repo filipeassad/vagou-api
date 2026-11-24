@@ -183,4 +183,102 @@ describe('troca de síndico', () => {
     const managers = Object.values(await roles()).filter((r) => r === 'manager/approved');
     expect(managers).toHaveLength(1);
   });
+
+  describe('síndico informa a própria unidade (T23)', () => {
+    function setOwnUnit(payload: Record<string, unknown>, headers = mariaHeaders) {
+      return app.inject({
+        method: 'PATCH',
+        url: `/v1/condominiums/${condo.id}/memberships/me`,
+        payload,
+        headers,
+      });
+    }
+
+    async function mariaRow() {
+      return app.db
+        .selectFrom('memberships')
+        .select(['role', 'status', 'unit_id', 'unit_relation', 'can_list_spots'])
+        .where('id', '=', maria.membershipId)
+        .executeTakeFirstOrThrow();
+    }
+
+    beforeEach(async () => {
+      // Como o síndico cadastrado pelo admin: sem unidade.
+      await app.db
+        .updateTable('memberships')
+        .set({ unit_id: null, unit_relation: null })
+        .where('id', '=', maria.membershipId)
+        .execute();
+    });
+
+    it('grava a unidade sem mudar a situação; ao passar o papel, Maria continua moradora', async () => {
+      const res = await setOwnUnit({ unit_id: condo.unitId, unit_relation: 'owner' });
+
+      expect(res.statusCode).toBe(204);
+      expect(await mariaRow()).toMatchObject({
+        role: 'manager',
+        status: 'approved',
+        unit_id: condo.unitId,
+        unit_relation: 'owner',
+      });
+      expect(sentNotifications(app)).toHaveLength(0);
+
+      const transferred = await transfer(joao.membershipId);
+      expect(transferred.json().previous_manager.became).toBe('resident');
+      expect((await roles())[maria.user.id]).toBe('resident/approved');
+    });
+
+    it('síndico sem unidade precisa enviar unidade e vínculo → 400', async () => {
+      for (const payload of [{}, { unit_id: condo.unitId }, { unit_relation: 'owner' }]) {
+        const res = await setOwnUnit(payload);
+        expect(res.statusCode).toBe(400);
+        expect(res.json().error.code).toBe('MANAGER_UNIT_REQUIRED');
+      }
+      expect((await mariaRow()).unit_id).toBeNull();
+    });
+
+    it('com unidade, pode mudar só o vínculo', async () => {
+      await setOwnUnit({ unit_id: condo.unitId, unit_relation: 'owner' });
+
+      expect((await setOwnUnit({ unit_relation: 'tenant' })).statusCode).toBe(204);
+      expect(await mariaRow()).toMatchObject({ unit_id: condo.unitId, unit_relation: 'tenant' });
+    });
+
+    it('unidade de outro condomínio → 404 e nada muda', async () => {
+      const other = await createCondominium(app);
+
+      const res = await setOwnUnit({ unit_id: other.unitId, unit_relation: 'owner' });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error.code).toBe('UNIT_NOT_FOUND');
+      expect((await mariaRow()).unit_id).toBeNull();
+    });
+
+    it('inquilina com a regra do condomínio desligada perde a permissão de anunciar', async () => {
+      await app.db
+        .updateTable('condominiums')
+        .set({ tenants_can_list_spots: false })
+        .where('id', '=', condo.id)
+        .execute();
+      await app.db
+        .updateTable('memberships')
+        .set({ can_list_spots: true })
+        .where('id', '=', maria.membershipId)
+        .execute();
+
+      expect(
+        (await setOwnUnit({ unit_id: condo.unitId, unit_relation: 'tenant' })).statusCode,
+      ).toBe(204);
+      expect((await mariaRow()).can_list_spots).toBe(false);
+    });
+
+    it('morador aprovado e portaria continuam sem acesso → 403', async () => {
+      const frontDesk = await createMember(app, condo, { role: 'front_desk' });
+      for (const member of [joao, frontDesk]) {
+        const { headers } = await signIn(app, member.user.id);
+        const res = await setOwnUnit({ unit_id: condo.unitId, unit_relation: 'owner' }, headers);
+        expect(res.statusCode).toBe(403);
+      }
+    });
+  });
 });

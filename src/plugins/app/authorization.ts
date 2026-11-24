@@ -45,7 +45,10 @@ export const MembershipRejected = createError(
 
 export const Forbidden = createError('FORBIDDEN', 'Você não tem permissão para isso.', 403);
 
-/** Quem pode usar uma rota de condomínio. Declarado em `config.access` de cada rota. */
+/**
+ * Quem pode usar uma rota de condomínio. Declarado em `config.access` de cada rota: uma
+ * regra ou uma lista delas (vale se qualquer uma servir).
+ */
 export type AccessRule = {
   roles: readonly MembershipRole[];
   /** Situações do vínculo aceitas. Padrão: só `approved`. */
@@ -105,14 +108,18 @@ export default fp(
         const membership = await fastify.membershipsRepository.findActive(request.auth.userId, cid);
         if (!membership) throw new CondominiumNotFound();
 
-        const rule = request.routeOptions.config.access ?? DEFAULT_ACCESS;
-        const statuses = rule.statuses ?? ['approved'];
-        if (!statuses.includes(membership.status)) {
+        const access = request.routeOptions.config.access ?? DEFAULT_ACCESS;
+        const rules: readonly AccessRule[] = Array.isArray(access) ? access : [access];
+        const allowed = rules.some(
+          (rule) =>
+            (rule.statuses ?? ['approved']).includes(membership.status) &&
+            rule.roles.includes(membership.role),
+        );
+        if (!allowed) {
           if (membership.status === 'pending') throw new MembershipPending();
           if (membership.status === 'rejected') throw new MembershipRejected();
           throw new Forbidden();
         }
-        if (!rule.roles.includes(membership.role)) throw new Forbidden();
 
         request.membership = membership;
       },
@@ -139,6 +146,6 @@ declare module 'fastify' {
     membership: Membership | null;
   }
   interface FastifyContextConfig {
-    access?: AccessRule;
+    access?: AccessRule | readonly AccessRule[];
   }
 }

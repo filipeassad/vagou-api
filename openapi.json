@@ -3265,11 +3265,11 @@
     },
     "/v1/condominiums/{cid}/memberships/me": {
       "patch": {
-        "summary": "Corrigir e reenviar o próprio cadastro (morador)",
+        "summary": "Corrigir o próprio cadastro (morador) ou informar a própria unidade (síndico)",
         "tags": [
           "memberships"
         ],
-        "description": "Recusado ou pendente volta a pendente, sem o motivo da recusa; o síndico é avisado de novo.",
+        "description": "Morador recusado ou pendente: volta a pendente, sem o motivo da recusa, e o síndico é avisado de novo. Síndico: grava a unidade sem mudar a situação; ao passar o papel, vira morador aprovado dela. Síndico sem unidade precisa enviar unit_id e unit_relation (400 MANAGER_UNIT_REQUIRED). Morador aprovado → 403.",
         "requestBody": {
           "required": true,
           "content": {
@@ -4330,7 +4330,8 @@
                             "required": [
                               "id",
                               "name",
-                              "timezone"
+                              "timezone",
+                              "public_code"
                             ],
                             "properties": {
                               "id": {
@@ -4344,6 +4345,13 @@
                                 "type": "string",
                                 "examples": [
                                   "America/Sao_Paulo"
+                                ]
+                              },
+                              "public_code": {
+                                "type": "string",
+                                "description": "Código do link do QR Code (req. 6): o web monta /c/<código> e o cartaz; o morador recusado lista as unidades por GET /v1/public/condominiums/:code para corrigir o cadastro (req. 18). Não é segredo: fica impresso no condomínio.",
+                                "examples": [
+                                  "K7M2Q9XA"
                                 ]
                               }
                             }

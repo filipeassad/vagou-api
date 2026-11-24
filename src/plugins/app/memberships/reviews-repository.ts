@@ -3,6 +3,7 @@ import fp from 'fastify-plugin';
 import type { Db } from '../../external/db.ts';
 import type { Events } from '../events.ts';
 import { UnitNotFound } from '../condominiums/units-repository.ts';
+import { Forbidden } from '../authorization.ts';
 import { MembershipNotFound, type MembershipStatus } from './memberships-repository.ts';
 
 /** Ex.: aprovar quem já foi aprovado ou recusado (recusado precisa reenviar antes). */
@@ -24,6 +25,13 @@ export const CannotRemoveManager = createError(
   'CANNOT_REMOVE_MANAGER',
   'Para remover o síndico, transfira o papel de síndico para outro morador antes.',
   409,
+);
+
+/** T23: síndico sem unidade precisa informar as duas coisas. */
+export const ManagerUnitRequired = createError(
+  'MANAGER_UNIT_REQUIRED',
+  'Informe a sua unidade e se você é proprietário ou inquilino.',
+  400,
 );
 
 export type Relation = 'owner' | 'tenant';
@@ -301,6 +309,58 @@ export function createReviewsRepository(db: Db, events: Events) {
           { condominiumId, membershipId, userId: membership.user_id, removedBy },
           trx,
         );
+      });
+    },
+
+    /**
+     * O síndico informa a própria unidade (req. 5; plano, item 10 da seção 9, opção (b)).
+     * Continua síndico aprovado, sem aviso a ninguém. Serve para, ao passar o papel, ele
+     * virar morador aprovado dessa unidade em vez de sair do condomínio.
+     * - Trava o condomínio em modo compartilhado: não roda junto com a troca de síndico
+     *   (que trava em modo exclusivo) nem com a mudança da regra de inquilinos.
+     * - Inquilino com a regra desligada perde a permissão de anunciar (req. 3).
+     */
+    async setManagerUnit(
+      condominiumId: string,
+      membershipId: string,
+      patch: { unitId?: string; unitRelation?: Relation },
+    ) {
+      await db.transaction().execute(async (trx) => {
+        const condominium = await tenantsCanListSpots(trx, condominiumId);
+        const current = await trx
+          .selectFrom('memberships')
+          .select(['unit_id', 'unit_relation', 'can_list_spots'])
+          .where('condominium_id', '=', condominiumId)
+          .where('id', '=', membershipId)
+          .where('role', '=', 'manager')
+          .where('status', '=', 'approved')
+          .forUpdate()
+          .executeTakeFirst();
+        // Deixou de ser síndico numa troca que terminou antes desta.
+        if (!current) throw new Forbidden();
+
+        const unitId = patch.unitId ?? current.unit_id;
+        const unitRelation = patch.unitRelation ?? current.unit_relation;
+        if (!unitId || !unitRelation) throw new ManagerUnitRequired();
+
+        const unit = await trx
+          .selectFrom('units')
+          .select('id')
+          .where('condominium_id', '=', condominiumId)
+          .where('id', '=', unitId)
+          .executeTakeFirst();
+        if (!unit) throw new UnitNotFound();
+
+        const loses = unitRelation === 'tenant' && !condominium.tenants_can_list_spots;
+        await trx
+          .updateTable('memberships')
+          .set({
+            unit_id: unitId,
+            unit_relation: unitRelation,
+            ...(loses && { can_list_spots: false }),
+          })
+          .where('id', '=', membershipId)
+          .execute();
       });
     },
 

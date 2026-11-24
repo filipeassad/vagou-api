@@ -17,6 +17,11 @@ export const MyMembership = Type.Object({
     id: Type.String({ format: 'uuid' }),
     name: Type.String(),
     timezone: Type.String({ examples: ['America/Sao_Paulo'] }),
+    public_code: Type.String({
+      description:
+        'Código do link do QR Code (req. 6): o web monta /c/<código> e o cartaz; o morador recusado lista as unidades por GET /v1/public/condominiums/:code para corrigir o cadastro (req. 18). Não é segredo: fica impresso no condomínio.',
+      examples: ['K7M2Q9XA'],
+    }),
   }),
   unit: Nullable(
     Type.Object({

@@ -44,7 +44,12 @@ describe('GET /v1/me', () => {
           can_list_spots: false,
           unit_relation: 'owner',
           rejection_reason: null,
-          condominium: { id: a.id, name: expect.any(String), timezone: 'America/Sao_Paulo' },
+          condominium: {
+            id: a.id,
+            name: expect.any(String),
+            timezone: 'America/Sao_Paulo',
+            public_code: a.publicCode,
+          },
           unit: { id: a.unitId, number: '101', block: { id: a.blockId, name: 'Bloco A' } },
         },
       ],
